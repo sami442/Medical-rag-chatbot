@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-
 st.set_page_config(
     page_title="MedSource — Research Q&A",
     page_icon="◇",
