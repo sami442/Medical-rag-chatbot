@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
+
 st.set_page_config(
     page_title="MedSource — Research Q&A",
     page_icon="◇",
@@ -21,12 +22,7 @@ st.markdown("""
     .stApp { background: #F4F2ED; color: #2B2D3A; }
     .block-container { max-width: 880px; padding-top: 1.5rem; }
 
-    .app-title {
-        font-size: 2.2rem; font-weight: 700; color: #2B2D3A; margin: 0;
-    }
-    .app-sub {
-        color: #6B6E80; font-size: 0.95rem; margin-top: 0.2rem;
-    }
+    h1 { color: #2B2D3A !important; font-weight: 700 !important; }
 
     .source-card {
         background: white; border: 1px solid #DEDBD0; border-radius: 10px;
@@ -61,11 +57,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---- Header ----
-st.markdown("""
-<p class='app-title'>MedSource</p>
-<p class='app-sub'>Ask questions about any medical article, grounded in its actual content.</p>
-""", unsafe_allow_html=True)
+# ---- Header (native Streamlit title, guaranteed to render) ----
+st.title("MedSource")
+st.caption("Ask questions about any medical article, grounded in its actual content.")
 
 # ---- Sidebar ----
 with st.sidebar:
