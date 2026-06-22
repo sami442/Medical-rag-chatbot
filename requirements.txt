@@ -1,9 +1,2 @@
 streamlit
 google-generativeai
-sentence-transformers
-torch
-torchvision
-faiss-cpu
-beautifulsoup4
-requests
-numpy
