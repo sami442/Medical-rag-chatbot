@@ -1,11 +1,8 @@
 import streamlit as st
 import google.generativeai as genai
-from sentence_transformers import SentenceTransformer
-import faiss
-import numpy as np
 
 st.set_page_config(
-    page_title="MedSource — Portfolio Assistant",
+    page_title="MedSource — Medical AI Assistant",
     page_icon="◇",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -34,110 +31,16 @@ st.markdown("""
         padding: 0.8rem 1.1rem; margin: 0.5rem 0;
         max-width: 78%; font-size: 0.95rem; line-height: 1.6;
     }
-    .chat-wrap { margin-bottom: 1rem; }
 
     section[data-testid="stSidebar"] { background: #2B2D3A !important; }
     section[data-testid="stSidebar"] * { color: #F4F2ED !important; }
     section[data-testid="stSidebar"] hr { border-color: #3A3D52 !important; }
 
-    .stButton > button {
-        background: #C9952C; color: #2B2D3A; border: none;
-        border-radius: 8px; padding: 0.5rem 1.2rem; font-weight: 600;
-    }
-
     footer, [data-testid="stToolbar"], #MainMenu { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---- Pre-loaded knowledge base about Samina's portfolio ----
-KNOWLEDGE_BASE = """
-# About Samina Mazhar
-Samina Mazhar is a BS Artificial Intelligence student at Islamia University Bahawalpur (IUB), Pakistan.
-GPA: 3.61/4.0 — Top 5% of batch.
-Ehsaas Scholarship 2020-24 (Fully Funded).
-PM Youth Laptop Scheme 2023 awardee.
-GitHub: github.com/sami442
-Hugging Face: huggingface.co/mazharsamina26
-Research interests: Computer Vision, Medical AI, Deep Learning.
-
-# Project 1: Brain MRI Tumor Segmentation
-Repository: github.com/sami442/medical-image-segmentation
-Live App: medical-image-segmentation-jc6hrzsdhjimse9d47n5uz.streamlit.app
-Architecture: U-Net CNN for semantic segmentation.
-Dataset: Kaggle LGG MRI Segmentation dataset — 110 patients, 3929 brain MRI images. Real clinical dataset.
-Task: Binary pixel-wise segmentation — tumor region vs. normal brain tissue.
-Performance: 99.37% accuracy, Dice coefficient 0.3147.
-The Dice score started at 0.0136 and improved significantly after switching from binary cross-entropy loss to a combined BCE + Dice loss function to handle class imbalance between tumor and non-tumor pixels.
-Model saved as both .h5 (full model on Hugging Face) and .tflite (0.12MB, for Streamlit deployment).
-Design: Dark neon aesthetic — NeuroScan AI branding, teal/green accents.
-Challenges: Class imbalance (tumor pixels are rare), domain adaptation, TFLite conversion.
-
-# Project 2: CancerShield AI — Multi-Cancer Detection
-Repository: github.com/sami442/multi-cancer-detection
-Live App: multi-cancer-detection-9jme9mlzxhhllkct4ec3ft.streamlit.app
-Architecture: Two independent SVM (Support Vector Machine) classifiers — one per cancer type.
-Datasets:
-- Breast Cancer: Wisconsin Diagnostic dataset (UCI), 569 samples, 30 features. Real clinical dataset.
-- Ovarian Cancer: Coimbra dataset (UCI), 116 samples, 9 biomarker features. Real clinical dataset.
-Performance:
-- Breast Cancer SVM: 98.25% accuracy
-- Ovarian Cancer SVM: 87.50% accuracy
-Models saved as .pkl files with StandardScaler.
-Design: White/red clinical aesthetic — CancerShield AI branding.
-This project uses tabular/structured data (biomarkers and diagnostic measurements) rather than images, making it technically distinct from the image-based projects.
-
-# Project 3: MediScan — Multi-Disease Screening Console
-Repository: github.com/sami442/multi-disease-imaging-ai
-Live App: multi-disease-imaging-ai.streamlit.app
-Architecture: Four independent CNN (Convolutional Neural Network) binary classifiers, one per disease.
-Design: Dark canvas with terracotta and teal accents — clinical chart / triage board aesthetic.
-Fonts: Fraunces serif + JetBrains Mono — deliberately distinct from other two apps.
-
-Disease 1 — Pneumonia Detection:
-Dataset: Kaggle Chest X-ray dataset (Paul Mooney), 5860 chest X-ray images. Real clinical dataset.
-Task: Binary classification — Normal vs. Pneumonia.
-Accuracy: 82.25%
-
-Disease 2 — Diabetic Retinopathy Detection:
-Dataset: APTOS-2019 Kaggle dataset (Gaussian-filtered), 3662 retina fundus images. Real clinical dataset.
-Task: Binary classification — No DR vs. Has DR (simplified from original 5-class).
-Accuracy: 92.77%
-
-Disease 3 — Skin Lesion Classification:
-Dataset: HAM10000 (Human Against Machine with 10000 training images), 10015 dermoscopy images. Real clinical dataset.
-Task: Binary classification — Benign vs. Malignant. High recall on malignant class prioritized for screening safety.
-Accuracy: 78.00%
-
-Disease 4 — COVID-19 Detection:
-Dataset: COVID-19 Radiography Database, 21165 chest X-ray images. Real clinical dataset.
-Task: Binary classification — Normal vs. Abnormal (COVID + Lung Opacity + Viral Pneumonia combined).
-Accuracy: 75.83%
-Transfer learning with ResNet50 was attempted but performed worse (~55-66%) due to ImageNet-to-X-ray domain mismatch. Reverted to custom CNN as the better model — this is a documented learning point about when transfer learning helps vs. hurts.
-All 4 models converted to TFLite for lightweight Streamlit deployment.
-TF version used: tensorflow-cpu==2.17.0 (required to support TFLite opcode version 12).
-
-# Technical Stack Across All Projects
-Languages: Python 3.10
-Frameworks: TensorFlow/Keras (CNN training), Scikit-learn (SVM), Streamlit (deployment)
-Model formats: .h5 (training), .tflite (deployment), .pkl (SVM)
-Hosting: Streamlit Cloud (free tier), Hugging Face (large model storage)
-Version control: GitHub (sami442)
-All datasets are real, publicly available clinical datasets from Kaggle and UCI — no synthetic data used.
-"""
-
-# ---- Chunk and index the knowledge base at startup ----
-@st.cache_resource(show_spinner=False)
-def build_knowledge_index():
-    embedder = SentenceTransformer('all-MiniLM-L6-v2')
-    # Split by double newlines to preserve semantic blocks
-    chunks = [c.strip() for c in KNOWLEDGE_BASE.split('\n\n') if c.strip()]
-    embeddings = embedder.encode(chunks)
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(np.array(embeddings).astype('float32'))
-    return embedder, chunks, index
-
-
+# ---- Gemini setup ----
 @st.cache_resource(show_spinner=False)
 def get_gemini():
     api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -146,64 +49,70 @@ def get_gemini():
     genai.configure(api_key=api_key)
     return genai.GenerativeModel('gemini-2.5-flash')
 
+SYSTEM_PROMPT = """You are MedSource, a knowledgeable and friendly medical AI assistant.
+You answer questions about medical conditions, symptoms, treatments, medications,
+anatomy, physiology, diseases, and general health topics clearly and accurately.
+Always remind users that your answers are for informational purposes only and
+that they should consult a licensed healthcare professional for personal medical advice.
+Keep answers concise, well-structured, and easy to understand."""
 
-def retrieve(question, chunks, index, embedder, k=4):
-    q_emb = embedder.encode([question])
-    _, indices = index.search(np.array(q_emb).astype('float32'), k)
-    return [chunks[i] for i in indices[0]]
+def answer(messages, gemini):
+    # Build conversation history for multi-turn chat
+    history = []
+    for msg in messages[:-1]:  # all except last
+        role = "user" if msg["role"] == "user" else "model"
+        history.append({"role": role, "parts": [msg["content"]]})
 
-
-def answer(question, chunks, index, embedder, gemini):
-    relevant = retrieve(question, chunks, index, embedder)
-    context = "\n\n".join(relevant)
-    prompt = f"""You are a helpful assistant that answers questions about 
-Samina Mazhar's AI/ML portfolio and background.
-Answer based on the context below. Be specific and helpful.
-If the answer isn't in the context, say so honestly.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:"""
-    return gemini.generate_content(prompt).text
-
+    chat = gemini.start_chat(history=history)
+    response = chat.send_message(
+        f"{SYSTEM_PROMPT}\n\nUser question: {messages[-1]['content']}"
+        if len(messages) == 1
+        else messages[-1]["content"]
+    )
+    return response.text
 
 # ---- Header ----
 st.title("MedSource")
-st.caption("Ask me anything about Samina's medical AI projects, datasets, models, or background.")
+st.caption("Your medical AI assistant — ask about symptoms, conditions, treatments, and more.")
 
 # ---- Sidebar ----
 with st.sidebar:
-    st.markdown("### What can I answer?")
+    st.markdown("### What can I help with?")
     st.markdown("""
-- 🧠 Brain Tumor Segmentation project
-- 🏥 CancerShield — breast & ovarian cancer
-- 🩺 MediScan — 4-disease screening console
-- 📊 Datasets, accuracy, architectures used
-- 👩‍💻 Samina's background & skills
+- 🩺 Symptoms & conditions
+- 💊 Medications & treatments
+- 🫀 Anatomy & physiology
+- 🧬 Diseases & disorders
+- 🏥 Medical procedures
+- 🥗 Health & nutrition
     """)
     st.markdown("---")
     st.markdown("**Example questions:**")
     st.markdown("""
-- *What dataset was used for brain tumor segmentation?*
-- *What accuracy did the pneumonia model achieve?*
-- *Why did ResNet50 underperform on COVID-19?*
-- *What is Samina's GPA?*
-- *How many diseases does MediScan screen for?*
+- *What are the symptoms of diabetes?*
+- *How does chemotherapy work?*
+- *What causes high blood pressure?*
+- *What is the difference between Type 1 and Type 2 diabetes?*
+- *How is pneumonia diagnosed?*
     """)
+    st.markdown("---")
+    st.markdown("⚕️ **Disclaimer**")
+    st.markdown(
+        "MedSource provides general medical information only. "
+        "Always consult a licensed healthcare professional "
+        "for personal medical advice and diagnosis."
+    )
     st.markdown("---")
     st.markdown("**Developer**")
     st.markdown("Samina Mazhar")
     st.markdown("BS Artificial Intelligence, IUB")
-    st.markdown("[GitHub](https://github.com/sami442) · [Hugging Face](https://huggingface.co/mazharsamina26)")
+    st.markdown(
+        "[GitHub](https://github.com/sami442) · "
+        "[Hugging Face](https://huggingface.co/mazharsamina26)"
+    )
 
-# ---- Load resources ----
-with st.spinner("Loading knowledge base..."):
-    embedder, chunks, index = build_knowledge_index()
+# ---- Load Gemini ----
 gemini = get_gemini()
-
 if gemini is None:
     st.error("Gemini API key not configured. Add GEMINI_API_KEY in Streamlit secrets.")
     st.stop()
@@ -213,18 +122,19 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ---- Chat history ----
-st.markdown("<div class='chat-wrap'>", unsafe_allow_html=True)
 for msg in st.session_state.messages:
     bubble = "chat-bubble-user" if msg["role"] == "user" else "chat-bubble-bot"
-    st.markdown(f"<div class='{bubble}'>{msg['content']}</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='{bubble}'>{msg['content']}</div>",
+        unsafe_allow_html=True
+    )
 
 # ---- Chat input ----
-question = st.chat_input("Ask about any of Samina's projects...")
+question = st.chat_input("Ask a medical question...")
 if question:
     st.session_state.messages.append({"role": "user", "content": question})
     with st.spinner("Thinking..."):
-        reply = answer(question, chunks, index, embedder, gemini)
+        reply = answer(st.session_state.messages, gemini)
     st.session_state.messages.append({"role": "bot", "content": reply})
     st.rerun()
 
