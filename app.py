@@ -1,90 +1,145 @@
 import streamlit as st
 import google.generativeai as genai
-import requests
-from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
 st.set_page_config(
-    page_title="MedSource — Research Q&A",
+    page_title="MedSource — Portfolio Assistant",
     page_icon="◇",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Distinct visual style: slate blue + warm gold, sans-serif, card-based chat
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Source+Code+Pro:wght@400;500&display=swap');
 
     html, body, [class*="css"] { font-family: 'Source Sans 3', sans-serif; }
     .stApp { background: #F4F2ED; color: #2B2D3A; }
-    .block-container { max-width: 880px; padding-top: 1.5rem; }
+    .block-container { max-width: 860px; padding-top: 1.5rem; }
 
-    h1 { color: #2B2D3A !important; font-weight: 700 !important; }
-
-    .source-card {
-        background: white; border: 1px solid #DEDBD0; border-radius: 10px;
-        padding: 1.2rem 1.4rem; margin: 1rem 0;
-    }
-    .source-status {
-        font-family: 'Source Code Pro', monospace; font-size: 0.8rem;
-        color: #6B6E80; margin-top: 0.5rem;
-    }
-    .source-status.ready { color: #3A7D5C; }
+    h1 { color: #2B2D3A !important; font-weight: 700 !important; font-size: 2rem !important; }
 
     .chat-bubble-user {
-        background: #2B2D3A; color: #F4F2ED; border-radius: 12px 12px 2px 12px;
-        padding: 0.8rem 1.1rem; margin: 0.5rem 0; max-width: 80%;
-        margin-left: auto; font-size: 0.95rem;
+        background: #2B2D3A; color: #F4F2ED;
+        border-radius: 12px 12px 2px 12px;
+        padding: 0.8rem 1.1rem; margin: 0.5rem 0;
+        max-width: 78%; margin-left: auto;
+        font-size: 0.95rem;
     }
     .chat-bubble-bot {
         background: white; border: 1px solid #DEDBD0; color: #2B2D3A;
-        border-radius: 12px 12px 12px 2px; padding: 0.8rem 1.1rem;
-        margin: 0.5rem 0; max-width: 80%; font-size: 0.95rem; line-height: 1.5;
+        border-radius: 12px 12px 12px 2px;
+        padding: 0.8rem 1.1rem; margin: 0.5rem 0;
+        max-width: 78%; font-size: 0.95rem; line-height: 1.6;
     }
+    .chat-wrap { margin-bottom: 1rem; }
 
     section[data-testid="stSidebar"] { background: #2B2D3A !important; }
     section[data-testid="stSidebar"] * { color: #F4F2ED !important; }
+    section[data-testid="stSidebar"] hr { border-color: #3A3D52 !important; }
 
     .stButton > button {
-        background: #C9952C; color: #2B2D3A; border: none; border-radius: 8px;
-        padding: 0.6rem 1.4rem; font-weight: 600;
+        background: #C9952C; color: #2B2D3A; border: none;
+        border-radius: 8px; padding: 0.5rem 1.2rem; font-weight: 600;
     }
 
     footer, [data-testid="stToolbar"], #MainMenu { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---- Header (native Streamlit title, guaranteed to render) ----
-st.title("MedSource")
-st.caption("Ask questions about any medical article, grounded in its actual content.")
+# ---- Pre-loaded knowledge base about Samina's portfolio ----
+KNOWLEDGE_BASE = """
+# About Samina Mazhar
+Samina Mazhar is a BS Artificial Intelligence student at Islamia University Bahawalpur (IUB), Pakistan.
+GPA: 3.61/4.0 — Top 5% of batch.
+Ehsaas Scholarship 2020-24 (Fully Funded).
+PM Youth Laptop Scheme 2023 awardee.
+GitHub: github.com/sami442
+Hugging Face: huggingface.co/mazharsamina26
+Research interests: Computer Vision, Medical AI, Deep Learning.
 
-# ---- Sidebar ----
-with st.sidebar:
-    st.markdown("### About")
-    st.markdown(
-        "This tool fetches a live web article, retrieves the most "
-        "relevant passages for your question using semantic search, "
-        "and asks Gemini to answer using only that retrieved context."
-    )
-    st.markdown("---")
-    st.markdown("**Developer**")
-    st.markdown("Samina Mazhar")
-    st.markdown("BS Artificial Intelligence")
-    st.markdown("---")
-    st.markdown("[GitHub](https://github.com/sami442)")
-    st.markdown("[Hugging Face](https://huggingface.co/mazharsamina26)")
+# Project 1: Brain MRI Tumor Segmentation
+Repository: github.com/sami442/medical-image-segmentation
+Live App: medical-image-segmentation-jc6hrzsdhjimse9d47n5uz.streamlit.app
+Architecture: U-Net CNN for semantic segmentation.
+Dataset: Kaggle LGG MRI Segmentation dataset — 110 patients, 3929 brain MRI images. Real clinical dataset.
+Task: Binary pixel-wise segmentation — tumor region vs. normal brain tissue.
+Performance: 99.37% accuracy, Dice coefficient 0.3147.
+The Dice score started at 0.0136 and improved significantly after switching from binary cross-entropy loss to a combined BCE + Dice loss function to handle class imbalance between tumor and non-tumor pixels.
+Model saved as both .h5 (full model on Hugging Face) and .tflite (0.12MB, for Streamlit deployment).
+Design: Dark neon aesthetic — NeuroScan AI branding, teal/green accents.
+Challenges: Class imbalance (tumor pixels are rare), domain adaptation, TFLite conversion.
+
+# Project 2: CancerShield AI — Multi-Cancer Detection
+Repository: github.com/sami442/multi-cancer-detection
+Live App: multi-cancer-detection-9jme9mlzxhhllkct4ec3ft.streamlit.app
+Architecture: Two independent SVM (Support Vector Machine) classifiers — one per cancer type.
+Datasets:
+- Breast Cancer: Wisconsin Diagnostic dataset (UCI), 569 samples, 30 features. Real clinical dataset.
+- Ovarian Cancer: Coimbra dataset (UCI), 116 samples, 9 biomarker features. Real clinical dataset.
+Performance:
+- Breast Cancer SVM: 98.25% accuracy
+- Ovarian Cancer SVM: 87.50% accuracy
+Models saved as .pkl files with StandardScaler.
+Design: White/red clinical aesthetic — CancerShield AI branding.
+This project uses tabular/structured data (biomarkers and diagnostic measurements) rather than images, making it technically distinct from the image-based projects.
+
+# Project 3: MediScan — Multi-Disease Screening Console
+Repository: github.com/sami442/multi-disease-imaging-ai
+Live App: multi-disease-imaging-ai.streamlit.app
+Architecture: Four independent CNN (Convolutional Neural Network) binary classifiers, one per disease.
+Design: Dark canvas with terracotta and teal accents — clinical chart / triage board aesthetic.
+Fonts: Fraunces serif + JetBrains Mono — deliberately distinct from other two apps.
+
+Disease 1 — Pneumonia Detection:
+Dataset: Kaggle Chest X-ray dataset (Paul Mooney), 5860 chest X-ray images. Real clinical dataset.
+Task: Binary classification — Normal vs. Pneumonia.
+Accuracy: 82.25%
+
+Disease 2 — Diabetic Retinopathy Detection:
+Dataset: APTOS-2019 Kaggle dataset (Gaussian-filtered), 3662 retina fundus images. Real clinical dataset.
+Task: Binary classification — No DR vs. Has DR (simplified from original 5-class).
+Accuracy: 92.77%
+
+Disease 3 — Skin Lesion Classification:
+Dataset: HAM10000 (Human Against Machine with 10000 training images), 10015 dermoscopy images. Real clinical dataset.
+Task: Binary classification — Benign vs. Malignant. High recall on malignant class prioritized for screening safety.
+Accuracy: 78.00%
+
+Disease 4 — COVID-19 Detection:
+Dataset: COVID-19 Radiography Database, 21165 chest X-ray images. Real clinical dataset.
+Task: Binary classification — Normal vs. Abnormal (COVID + Lung Opacity + Viral Pneumonia combined).
+Accuracy: 75.83%
+Transfer learning with ResNet50 was attempted but performed worse (~55-66%) due to ImageNet-to-X-ray domain mismatch. Reverted to custom CNN as the better model — this is a documented learning point about when transfer learning helps vs. hurts.
+All 4 models converted to TFLite for lightweight Streamlit deployment.
+TF version used: tensorflow-cpu==2.17.0 (required to support TFLite opcode version 12).
+
+# Technical Stack Across All Projects
+Languages: Python 3.10
+Frameworks: TensorFlow/Keras (CNN training), Scikit-learn (SVM), Streamlit (deployment)
+Model formats: .h5 (training), .tflite (deployment), .pkl (SVM)
+Hosting: Streamlit Cloud (free tier), Hugging Face (large model storage)
+Version control: GitHub (sami442)
+All datasets are real, publicly available clinical datasets from Kaggle and UCI — no synthetic data used.
+"""
+
+# ---- Chunk and index the knowledge base at startup ----
+@st.cache_resource(show_spinner=False)
+def build_knowledge_index():
+    embedder = SentenceTransformer('all-MiniLM-L6-v2')
+    # Split by double newlines to preserve semantic blocks
+    chunks = [c.strip() for c in KNOWLEDGE_BASE.split('\n\n') if c.strip()]
+    embeddings = embedder.encode(chunks)
+    dimension = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dimension)
+    index.add(np.array(embeddings).astype('float32'))
+    return embedder, chunks, index
 
 
 @st.cache_resource(show_spinner=False)
-def get_embedder():
-    return SentenceTransformer('all-MiniLM-L6-v2')
-
-
-@st.cache_resource(show_spinner=False)
-def get_gemini_model():
+def get_gemini():
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
         return None
@@ -92,46 +147,19 @@ def get_gemini_model():
     return genai.GenerativeModel('gemini-2.5-flash')
 
 
-def fetch_article_text(url):
-    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-    soup = BeautifulSoup(response.text, "html.parser")
-    for tag in soup(["script", "style", "nav", "footer", "sup"]):
-        tag.decompose()
-    content_div = soup.find("div", {"id": "mw-content-text"})
-    paragraphs = content_div.find_all("p") if content_div else soup.find_all("p")
-    text = "\n".join(p.get_text().strip() for p in paragraphs if p.get_text().strip())
-    return text
-
-
-def chunk_text(text, chunk_size=500, overlap=50):
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size - overlap):
-        chunk = " ".join(words[i:i + chunk_size])
-        if chunk:
-            chunks.append(chunk)
-    return chunks
-
-
-def build_index(chunks, embedder):
-    embeddings = embedder.encode(chunks)
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(np.array(embeddings).astype('float32'))
-    return index
-
-
-def retrieve(question, chunks, index, embedder, k=3):
-    q_embedding = embedder.encode([question])
-    distances, indices = index.search(np.array(q_embedding).astype('float32'), k)
+def retrieve(question, chunks, index, embedder, k=4):
+    q_emb = embedder.encode([question])
+    _, indices = index.search(np.array(q_emb).astype('float32'), k)
     return [chunks[i] for i in indices[0]]
 
 
-def answer_question(question, chunks, index, embedder, gemini_model):
+def answer(question, chunks, index, embedder, gemini):
     relevant = retrieve(question, chunks, index, embedder)
     context = "\n\n".join(relevant)
-    prompt = f"""Answer the question based only on the following context.
-If the answer isn't in the context, say so clearly.
+    prompt = f"""You are a helpful assistant that answers questions about 
+Samina Mazhar's AI/ML portfolio and background.
+Answer based on the context below. Be specific and helpful.
+If the answer isn't in the context, say so honestly.
 
 Context:
 {context}
@@ -139,80 +167,68 @@ Context:
 Question: {question}
 
 Answer:"""
-    response = gemini_model.generate_content(prompt)
-    return response.text
+    return gemini.generate_content(prompt).text
 
+
+# ---- Header ----
+st.title("MedSource")
+st.caption("Ask me anything about Samina's medical AI projects, datasets, models, or background.")
+
+# ---- Sidebar ----
+with st.sidebar:
+    st.markdown("### What can I answer?")
+    st.markdown("""
+- 🧠 Brain Tumor Segmentation project
+- 🏥 CancerShield — breast & ovarian cancer
+- 🩺 MediScan — 4-disease screening console
+- 📊 Datasets, accuracy, architectures used
+- 👩‍💻 Samina's background & skills
+    """)
+    st.markdown("---")
+    st.markdown("**Example questions:**")
+    st.markdown("""
+- *What dataset was used for brain tumor segmentation?*
+- *What accuracy did the pneumonia model achieve?*
+- *Why did ResNet50 underperform on COVID-19?*
+- *What is Samina's GPA?*
+- *How many diseases does MediScan screen for?*
+    """)
+    st.markdown("---")
+    st.markdown("**Developer**")
+    st.markdown("Samina Mazhar")
+    st.markdown("BS Artificial Intelligence, IUB")
+    st.markdown("[GitHub](https://github.com/sami442) · [Hugging Face](https://huggingface.co/mazharsamina26)")
+
+# ---- Load resources ----
+with st.spinner("Loading knowledge base..."):
+    embedder, chunks, index = build_knowledge_index()
+gemini = get_gemini()
+
+if gemini is None:
+    st.error("Gemini API key not configured. Add GEMINI_API_KEY in Streamlit secrets.")
+    st.stop()
 
 # ---- Session state ----
-if "chunks" not in st.session_state:
-    st.session_state.chunks = None
-    st.session_state.index = None
+if "messages" not in st.session_state:
     st.session_state.messages = []
-    st.session_state.source_url = None
 
-embedder = get_embedder()
-gemini_model = get_gemini_model()
-
-# ---- Source input ----
-st.markdown("<div class='source-card'>", unsafe_allow_html=True)
-url_input = st.text_input(
-    "Article URL",
-    placeholder="Paste a Wikipedia or medical article URL, e.g. https://en.wikipedia.org/wiki/Diabetic_retinopathy",
-)
-load_clicked = st.button("Load Source")
-
-if load_clicked and url_input:
-    if gemini_model is None:
-        st.error("Gemini API key not configured. Add GEMINI_API_KEY in app secrets.")
-    else:
-        with st.spinner("Fetching and indexing article..."):
-            try:
-                text = fetch_article_text(url_input)
-                if len(text) < 200:
-                    st.warning("Very little text extracted — this source may not be scrapeable. Try a different URL.")
-                else:
-                    chunks = chunk_text(text)
-                    index = build_index(chunks, embedder)
-                    st.session_state.chunks = chunks
-                    st.session_state.index = index
-                    st.session_state.source_url = url_input
-                    st.session_state.messages = []
-                    st.success(f"Indexed {len(chunks)} passages from this article.")
-            except Exception as e:
-                st.error(f"Could not fetch this URL: {e}")
-
-if st.session_state.chunks:
-    st.markdown(
-        f"<p class='source-status ready'>● source loaded — {st.session_state.source_url}</p>",
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown("<p class='source-status'>○ no source loaded yet</p>", unsafe_allow_html=True)
-
+# ---- Chat history ----
+st.markdown("<div class='chat-wrap'>", unsafe_allow_html=True)
+for msg in st.session_state.messages:
+    bubble = "chat-bubble-user" if msg["role"] == "user" else "chat-bubble-bot"
+    st.markdown(f"<div class='{bubble}'>{msg['content']}</div>", unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Chat interface ----
-if st.session_state.chunks:
-    for msg in st.session_state.messages:
-        bubble_class = "chat-bubble-user" if msg["role"] == "user" else "chat-bubble-bot"
-        st.markdown(f"<div class='{bubble_class}'>{msg['content']}</div>", unsafe_allow_html=True)
+# ---- Chat input ----
+question = st.chat_input("Ask about any of Samina's projects...")
+if question:
+    st.session_state.messages.append({"role": "user", "content": question})
+    with st.spinner("Thinking..."):
+        reply = answer(question, chunks, index, embedder, gemini)
+    st.session_state.messages.append({"role": "bot", "content": reply})
+    st.rerun()
 
-    question = st.chat_input("Ask a question about this article...")
-    if question:
-        st.session_state.messages.append({"role": "user", "content": question})
-        with st.spinner("Thinking..."):
-            answer = answer_question(
-                question,
-                st.session_state.chunks,
-                st.session_state.index,
-                embedder,
-                gemini_model,
-            )
-        st.session_state.messages.append({"role": "bot", "content": answer})
-        st.rerun()
-else:
-    st.info("Load an article above to start asking questions.")
-
+# ---- Footer ----
 st.markdown("---")
 st.markdown(
     "Maintained by Samina Mazhar, BS Artificial Intelligence · "
